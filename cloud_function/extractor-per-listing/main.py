@@ -149,7 +149,105 @@ def parse_listing(text: str) -> dict:
     if mi is not None:
         d["mileage"] = mi
 
+#------------------------------Added Part-------------------------------
+#------------------------------Added Part-------------------------------
+
+def parse_listing(text: str) -> dict:
+    """
+    Extract vehicle info from raw TXT text and return as dict.
+    Combines price, year, make, model, mileage, and other features.
+    """
+    d = {}
+
+    # --- Price ---
+    m = PRICE_RE.search(text)
+    if m:
+        try:
+            d["price"] = int(m.group(1).replace(",", ""))
+        except ValueError:
+            pass
+
+    # --- Vehicle info ---
+    vehicle_data = extract_vehicle_data(text)
+    d.update(vehicle_data)
+
     return d
+
+# --- Vehicle info extraction ---
+def extract_vehicle_data(text: str) -> dict:
+    data = {}
+
+    # ---- Extract year, make, model ----
+    match = MAKE_MODEL_RE.search(text)
+    if match:
+        year_str, make_raw, model_raw = match.groups()
+        try:
+            data["year"] = int(year_str)
+        except ValueError:
+            pass
+        data["make"] = make_raw.title()
+        data["model"] = model_raw
+
+    # ---- Extract mileage ----
+    mileage = None
+
+    # pattern 1: mileage or odometer
+    m = re.search(r"(?:mileage|odometer)\s*[:\-]?\s*([\d,]+)", text, re.I)
+    if m:
+        try:
+            mileage = int(m.group(1).replace(",", ""))
+        except ValueError:
+            mileage = None
+
+    # pattern 2: k miles notation
+    if mileage is None:
+        m = re.search(r"(\d+(?:\.\d+)?)\s*k\s*(?:mi|mile|miles)\b", text, re.I)
+        if m:
+            try:
+                mileage = int(float(m.group(1)) * 1000)
+            except ValueError:
+                mileage = None
+
+    # pattern 3: full number with commas
+    if mileage is None:
+        m = re.search(r"(\d{1,3}(?:[,\d]{3})*)\s*(?:mi|mile|miles)\b", text, re.I)
+        if m:
+            try:
+                mileage = int(re.sub(r"[^\d]", "", m.group(1)))
+            except ValueError:
+                mileage = None
+
+    if mileage is not None:
+        data["mileage"] = mileage
+
+    # ---- Other vehicle features ----
+    feature_patterns = {
+        "transmission": r"transmission:\s*([^\n\r]+)",
+        "fuel_type": r"fuel:\s*([^\n\r]+)",
+        "drive_type": r"drive:\s*([^\n\r]+)",
+        "vehicle_type": r"type:\s*([^\n\r]+)",
+        "paint_color": r"paint color:\s*([^\n\r]+)",
+        "condition": r"condition:\s*([^\n\r]+)",
+        "title_status": r"title status:\s*([^\n\r]+)",
+    }
+
+    for key, pattern in feature_patterns.items():
+        match = re.search(pattern, text, re.I)
+        if match:
+            val = match.group(1).strip().lower()
+            if val:
+                data[key] = val
+
+    # ---- Cylinders ----
+    m = re.search(r"cylinders:\s*(\d+)", text, re.I)
+    if m:
+        try:
+            data["cylinders"] = int(m.group(1))
+        except ValueError:
+            pass
+
+    return data
+ 
 
 # -------------------- HTTP ENTRY --------------------
 def extract_http(request: Request):
